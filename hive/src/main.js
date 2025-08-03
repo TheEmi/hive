@@ -7,8 +7,8 @@ import OnlineMenu from "./components/online-menu.js";
 import PieceInventory from "./components/piece-inventory.js";
 import InstructionsPage from "./components/instructions.js";
 import Toast from "./components/toast.js";
-import Juris from "./juris/juris.js";
-
+import Juris from "juris";
+console.log("Here");
 const App = (props, context) => {
   const { getState, setState } = context;
 
