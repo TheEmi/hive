@@ -12,6 +12,17 @@ const HiveHexagon = (props, context) => {
   } = props;
   const { getState, setState } = context;
 
+  // Get stack height and pieces
+  const getStackInfo = () => {
+    const stackedPieces = getState("stackedPieces", {});
+    const key = `${q},${r}`;
+    const stack = stackedPieces[key] || [];
+    return {
+      height: stack.length,
+      pieces: stack,
+    };
+  };
+
   // Define border colors based on state
   const getBorderColor = () => {
     if (isSelected) return "#22c55e"; // green
@@ -38,32 +49,60 @@ const HiveHexagon = (props, context) => {
     return `M ${points.join(" L ")} Z`;
   };
 
+  const stackInfo = getStackInfo();
+
   return {
     render: () => ({
       div: {
-        className: () =>
-          getState("hoveredHex", { r: null, q: null }).r === r &&
-          getState("hoveredHex", { r: null, q: null }).q === q
-            ? `relative inline-block cursor-pointer transition-transform hover:scale-105`
-            : `relative inline-block`,
+        className: ()=>`relative inline-block cursor-pointer transition-transform duration-200 ${
+                      getState("hoveredHex", { r: null, q: null }).r === r &&
+                      getState("hoveredHex", { r: null, q: null }).q === q
+                        ? "scale-110 z-100"
+                        : ""}`,
         style: {
           width: `${size * 2}px`,
           height: `${size * 2}px`,
         },
         onclick: onClick,
+        ontouchstart: (e) => {
+          // Close tooltip when tapping on the hex itself (for mobile)
+          if ('ontouchstart' in window && stackInfo.height <= 1) {
+            setState("hoveredHex", { r: null, q: null });
+          }
+        },
         children: () => [
-          // SVG Hexagon
+          // SVG Hexagon with shadow for stacked pieces
           {
             svg: {
               width: size * 2,
               height: size * 2,
               viewBox: `${-size} ${-size} ${size * 2} ${size * 2}`,
-              className: "absolute inset-0",
+              className: () => `absolute inset-0 transition-transform duration-200`,
               style: {
                 pointerEvents: "none",
+                transform:
+                  stackInfo.height > 1
+                    ? `translate(${stackInfo.height}px, ${-stackInfo.height}px)`
+                    : "none",
               },
               children: () => [
-                // Hexagon background
+                // Shadow hexagons for stack effect
+                ...(stackInfo.height > 1
+                  ? Array.from({ length: stackInfo.height - 1 }, (_, i) => ({
+                      path: {
+                        d: createHexagonPath(size * 0.8),
+                        fill: "#d1d5db",
+                        stroke: "#9ca3af",
+                        "stroke-width": 1,
+                        style: {
+                          transform: `translate(${
+                            -2 * (i + 1)
+                          }px, ${2 * (i + 1)}px)`,
+                        },
+                      },
+                    }))
+                  : []),
+                // Main hexagon
                 {
                   path: {
                     style: {
@@ -76,30 +115,127 @@ const HiveHexagon = (props, context) => {
                     stroke: getBorderColor(),
                     "stroke-width": () =>
                       isSelected || isAvailable || isCapturable ? 3 : 1,
-                    onmouseenter: () => setState("hoveredHex", { r, q }),
-                    onmouseleave: () =>
-                      setState("hoveredHex", { r: null, q: null }),
+                    onmouseenter: () => {
+                      // Only set hover on non-touch devices
+                      if (!('ontouchstart' in window)) {
+                        setState("hoveredHex", { r, q });
+                      }
+                    },
+                    onmouseleave: () => {
+                      // Only clear hover on non-touch devices
+                      if (!('ontouchstart' in window)) {
+                        setState("hoveredHex", { r: null, q: null });
+                      }
+                    },
+                    ontouchstart: (e) => {
+                      e.preventDefault();
+                      // Toggle hover state on touch
+                      const currentHover = getState("hoveredHex", { r: null, q: null });
+                      if (currentHover.r === r && currentHover.q === q) {
+                        setState("hoveredHex", { r: null, q: null });
+                      } else {
+                        setState("hoveredHex", { r, q });
+                      }
+                    },
                     className: "transition-all duration-200",
                   },
                 },
               ],
             },
           },
-          // Piece image (if any)
+          // Piece image (top piece only)
           ...(pieceType
             ? [
                 {
                   div: {
-                    className:
-                      "absolute inset-0 flex items-center justify-center",
+                    className: () => `absolute inset-0 flex items-center justify-center transition-transform duration-200`,
+                    style: {
+                      transform:
+                        stackInfo.height > 1
+                          ? `translate(${stackInfo.height}px, ${-stackInfo.height}px)`
+                          : "none",
+                    },
                     children: [
                       {
                         img: {
-                          src: getPieceImage(),
+                          src: getPieceImage(pieceType),
                           alt: `${pieceColor} ${pieceType}`,
                           className: "w-15 h-15 object-contain",
                         },
                       },
+                    ],
+                  },
+                },
+              ]
+            : []),
+          // Stack height indicator
+          ...(stackInfo.height > 1
+            ? [
+                {
+                  div: {
+                    className: () => `absolute top-0 right-0 w-5 h-5 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center font-bold z-10 transition-transform duration-200`,
+                    style: {
+                      transform: `translate(${stackInfo.height}px, ${-stackInfo.height}px)`,
+                    },
+                    text: stackInfo.height.toString(),
+                  },
+                },
+              ]
+            : []),
+          // Stack tooltip on hover
+          ...(stackInfo.height > 1
+            ? [
+                {
+                  div: {
+                    className: () => `
+                  absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 
+                  bg-black text-white text-xs rounded p-3 opacity-0 transition-opacity z-50
+                  ${
+                    getState("hoveredHex", { r: null, q: null }).r === r &&
+                    getState("hoveredHex", { r: null, q: null }).q === q
+                      ? "opacity-100"
+                      : ""
+                  }
+                `,
+                    children: () => [
+                      { 
+                        div: { 
+                          text: "Stack (bottom to top):", 
+                          className: "font-bold mb-2 text-center" 
+                        } 
+                      },
+                      {
+                        div: {
+                          className: "flex flex-col gap-1",
+                          children: stackInfo.pieces.map((piece, index) => ({
+                            div: {
+                              className: "flex items-center gap-2",
+                              children: [
+                                {
+                                  div: {
+                                    className: "text-xs w-4",
+                                    text: `${index + 1}.`
+                                  }
+                                },
+                                {
+                                  HiveHexagon: {
+                                    pieceType: piece.type,
+                                    pieceColor: piece.color,
+                                    size: 50,
+                                    onClick: () => {}
+                                  }
+                                },
+                                {
+                                  div: {
+                                    className: `text-xs ${index === stackInfo.pieces.length - 1 ? 'font-bold text-yellow-300' : 'text-gray-300'}`,
+                                    text: `${piece.color} ${piece.type}${index === stackInfo.pieces.length - 1 ? ' (top)' : ''}`
+                                  }
+                                }
+                              ]
+                            }
+                          })).toReversed()
+                        }
+                      }
                     ],
                   },
                 },

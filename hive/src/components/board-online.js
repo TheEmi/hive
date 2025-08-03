@@ -1,6 +1,169 @@
-const HiveBoard = (props, context) => {
+const HiveBoardOnline = (props, context) => {
   const { getState, setState, subscribe, juris } = context;
   const spacing = 0.95; // 1 = normal, >1 = more space, <1 = tighter
+
+  // WebSocket connection - use existing connection if available
+  let ws = getState("ws", null);
+
+  // Initialize WebSocket connection only if not already connected
+  const initWebSocket = () => {
+    // Always get the latest WebSocket from global state (managed by online-menu)
+    const existingWs = getState("ws", null);
+    
+    if (existingWs && existingWs.readyState === WebSocket.OPEN) {
+      ws = existingWs;
+      setState("connectionStatus", "connected");
+      const currentWs = getState("ws", null);
+    const playerId = getState("playerId", null);
+    
+    if (currentWs && currentWs.readyState === WebSocket.OPEN) {
+      currentWs.send(JSON.stringify({
+        type: 'requestUpdate',
+      }));
+    }
+      // Subscribe to board-specific state changes instead of overriding message handler
+      // The online-menu will handle all WebSocket messages and update global state
+      // We'll react to those state changes
+      return;
+    }
+    
+
+    console.log('No existing connection found, this should not happen in online mode');
+    setState("connectionStatus", "disconnected");
+  };
+
+  // Handle board-specific updates when game state changes
+  const handleGameStateUpdate = () => {
+    const showToast = getState("showToast", null);
+    const playerColor = getState("playerColor", null);
+    const currentPlayer = getState("currentPlayer", "white");
+    const isMyTurn = currentPlayer === playerColor;    
+    if (showToast) {
+      if (isMyTurn) {
+        showToast("Your turn!");
+      } else {
+        showToast("Opponent's turn");
+      }
+    }
+    
+    // Update visual board
+    syncGameStateFromGlobal();
+  };
+
+  // Send move to server
+  const sendMoveToServer = (gameState) => {
+    // Always get the latest WebSocket from global state
+    const currentWs = getState("ws", null);
+    const playerId = getState("playerId", null);
+    
+    if (currentWs && currentWs.readyState === WebSocket.OPEN) {
+      currentWs.send(JSON.stringify({
+        type: 'move',
+        boardPieces: gameState.boardPieces,
+        stackedPieces: gameState.stackedPieces,
+        moveHistory: gameState.moveHistory,
+        gameWon: gameState.gameWon,
+        gameWinner: gameState.gameWinner,
+        currentPlayer: gameState.currentPlayer
+      }));
+    } else {
+      
+      // Try to get a fresh connection
+      const ws = getState("ws", null);
+      if (ws) {
+        console.log('Trying with fresh WebSocket reference, state:', ws.readyState);
+      }
+    }
+  };
+
+  // Sync game state from server
+  const syncGameState = (serverGameState) => {
+    if(!getState("currentPlayerLock", false)){
+      setState("currentPlayer", serverGameState.currentPlayer);
+    }
+    setState("boardPieces", serverGameState.boardPieces);
+    setState("stackedPieces", serverGameState.stackedPieces);
+    setState("moveHistory", serverGameState.moveHistory);
+    setState("gameWon", serverGameState.gameWon);
+    setState("gameWinner", serverGameState.gameWinner);
+    recalculatePieceInventories(serverGameState.moveHistory);
+    // Update visual board
+    const boardData = getState("boardData", []);
+    const updatedBoardData = boardData.map((hex) => {
+      const key = pieceKey(hex.q, hex.r);
+      const piece = serverGameState.boardPieces[key];
+      
+      if (piece) {
+        return {
+          ...hex,
+          pieceType: piece.type,
+          pieceColor: piece.color
+        };
+      } else {
+        return {
+          ...hex,
+          pieceType: null,
+          pieceColor: "transparent"
+        };
+      }
+    });
+    
+    setState("boardData", updatedBoardData);
+    
+    // Show whose turn it is
+    const playerColor = getState("playerColor", null);
+    const isMyTurn = serverGameState.currentPlayer === playerColor;
+  };
+  
+
+  // Recalculate piece inventories based on move history
+  const recalculatePieceInventories = (moveHistory) => {
+    // Reset piece counts to initial values
+    let initialPiecesWhite = {
+      queen: 1,
+      beetle: 2,
+      grasshopper: 3,
+      spider: 2,
+      ant: 3
+    };
+    let initialPiecesBlack = {
+      queen: 1,
+      beetle: 2,
+      grasshopper: 3,
+      spider: 2,
+      ant: 3
+    };
+    
+    
+    // Subtract pieces that have been placed based on move history
+    moveHistory.forEach(move => {
+      if (move.piece !== "movement") { // Only count placement moves, not movement
+        if (move.player === "white") {
+          initialPiecesWhite[move.piece] -= 1;
+        } else {
+          initialPiecesBlack[move.piece] -= 1;
+        }
+      }
+    });
+
+    setState("whitePieces", initialPiecesWhite);
+    setState("blackPieces", initialPiecesBlack);
+    
+  };
+
+  // Room management functions are handled in OnlineMenu component
+  // Just ensure we're using the existing WebSocket connection
+  const ensureConnection = () => {
+    const currentWs = getState("ws", null);
+    if (!currentWs || currentWs.readyState !== WebSocket.OPEN) {
+      setState("connectionStatus", "disconnected");
+    } else {
+      // Make sure we're using the existing connection
+      ws = currentWs;
+      setState("connectionStatus", "connected");
+      initWebSocket(); // This will just attach our message handler
+    }
+  };
 
   // Initialize game state
   const initializeGame = () => {
@@ -16,18 +179,23 @@ const HiveBoard = (props, context) => {
       setState("validMoves", []);
       setState("selectedPieceForMovement", null);
       setState("movementMode", false);
+      setState("gameMode", "online"); // Ensure game mode is set to online
       setState("gameInitialized", true);
     }
   };
 
   // Initialize game on first render
   initializeGame();
+  
+  // Ensure WebSocket connection
+  ensureConnection();
 
   // Cleanup animation frames on component unmount
   const cleanup = () => {
-    if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = null;
+    // Close WebSocket connection
+    setState("shouldReconnect", false);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.close();
     }
   };
 
@@ -51,6 +219,43 @@ const HiveBoard = (props, context) => {
       }
     }
   );
+
+  // Subscribe to game state changes from server (via online-menu)
+  const unsubscribeGameState = subscribe(
+    "currentPlayer",
+    (newValue, oldValue, path) => {
+      if (newValue && newValue !== oldValue) {
+        // Handle board-specific updates when game state changes
+        setState("currentPlayerLock", true);
+        handleGameStateUpdate();
+        setState("currentPlayerLock", false);
+      }
+    }
+  );
+
+  // Subscribe to board pieces changes to update visual board
+  const unsubscribeBoardPieces = subscribe(
+    "boardPieces",
+    (newValue, oldValue, path) => {
+      if (newValue !== oldValue) {
+        syncGameStateFromGlobal();
+      }
+    }
+  );
+
+  // Function to sync game state from global state (updated by online-menu)
+  const syncGameStateFromGlobal = () => {
+    const serverGameState = {
+      currentPlayer: getState("currentPlayer", "white"),
+      boardPieces: getState("boardPieces", {}),
+      stackedPieces: getState("stackedPieces", {}),
+      moveHistory: getState("moveHistory", []),
+      gameWon: getState("gameWon", false),
+      gameWinner: getState("gameWinner", null)
+    };
+    
+    syncGameState(serverGameState);
+  };
 
   //Subscribe to menu piece selection
 
@@ -502,9 +707,29 @@ const HiveBoard = (props, context) => {
   setState("calculateValidMoves", calculateValidMoves);
 
   const handleHexClick = (q, r) => {
-    if(getState("gameWon", false))return; // Ignore clicks if game is already won
-    const selectedPiece = getState("selectedPieceInventory", null);
+    if(getState("gameWon", false)) return; // Ignore clicks if game is already won
+    
+    // Check if it's this player's turn
     const currentPlayer = getState("currentPlayer", "white");
+    const playerColor = getState("playerColor", null);
+    if (currentPlayer !== playerColor) {
+      const showToast = getState("showToast", null);
+      if (showToast) {
+        showToast("Wait for your turn!");
+      }
+      return;
+    }
+    
+    // Check if game has started
+    if (!getState("gameStarted", false)) {
+      const showToast = getState("showToast", null);
+      if (showToast) {
+        showToast("Waiting for opponent to join...");
+      }
+      return;
+    }
+
+    const selectedPiece = getState("selectedPieceInventory", null);
     const validMoves = getState("validMoves", []);
     const movementMode = getState("movementMode", false);
     const selectedPieceForMovement = getState("selectedPieceForMovement", null);
@@ -606,6 +831,25 @@ const HiveBoard = (props, context) => {
       // Select existing piece for movement - FIXED
       const topPiece = getTopPieceAt(q, r);
       if (topPiece && topPiece.color === currentPlayer) {
+        // Additional check: make sure it's actually the player's turn
+        const playerColor = getState("playerColor", null);
+        if (currentPlayer !== playerColor) {
+          const showToast = getState("showToast", null);
+          if (showToast) {
+            showToast("Wait for your turn!");
+          }
+          return;
+        }
+        
+        // Check if game has started
+        if (!getState("gameStarted", false)) {
+          const showToast = getState("showToast", null);
+          if (showToast) {
+            showToast("Waiting for opponent to join...");
+          }
+          return;
+        }
+        
         // Check if player has placed their queen - can't move pieces until queen is placed
         const hasQueen = getState(`${currentPlayer}Pieces.queen`, 1, false) < 1;
         if (!hasQueen) {
@@ -656,7 +900,6 @@ const HiveBoard = (props, context) => {
           setState("selectedPieceForMovement", null);
           setState("validMoves", []);
           const showToast = getState("showToast", null);
-          console.log("toast?", showToast)
           if (showToast) {
             
             showToast(`This ${topPiece.type} cannot move from this position`);
@@ -796,6 +1039,29 @@ const HiveBoard = (props, context) => {
 
   // Confirm move function - to be called from BottomBar
   const confirmMove = () => {
+    // Check if it's this player's turn in online mode
+    const gameMode = getState("gameMode", "local");
+    if (gameMode === "online") {
+      const currentPlayer = getState("currentPlayer", "white");
+      const playerColor = getState("playerColor", null);
+      if (currentPlayer !== playerColor) {
+        const showToast = getState("showToast", null);
+        if (showToast) {
+          showToast("Wait for your turn!");
+        }
+        return;
+      }
+      
+      // Check if game has started
+      if (!getState("gameStarted", false)) {
+        const showToast = getState("showToast", null);
+        if (showToast) {
+          showToast("Waiting for opponent to join...");
+        }
+        return;
+      }
+    }
+    
     const selectedHex = getState("selectedHex", { q: null, r: null });
     const selectedPiece = getState("selectedPieceInventory", null);
     const lastMoveType = getState("lastMoveType", null);
@@ -811,7 +1077,6 @@ const HiveBoard = (props, context) => {
         const pieceKey = `${currentPlayer}Pieces.${selectedPiece}`;
         const currentCount = getState(pieceKey, 0);
         const newCount = Math.max(0, currentCount - 1);
-        console.log(`Decrementing ${pieceKey}: ${currentCount} -> ${newCount}`);
         setState(pieceKey, newCount);
       }
 
@@ -823,12 +1088,29 @@ const HiveBoard = (props, context) => {
         position: selectedHex,
         timestamp: Date.now(),
       };
-      setState("moveHistory", [...history, newMove]);
+      const updatedHistory = [...history, newMove];
+      setState("moveHistory", updatedHistory);
 
-      // Switch players AFTER decrementing count
-      setState("currentPlayer", currentPlayer === "white" ? "black" : "white");
+      // Calculate next player for server
+      const nextPlayer = currentPlayer === "white" ? "black" : "white";
 
-      // Clear selections and available moves
+      // Check for win condition before sending move
+      const hasWon = checkWin();
+
+      // Prepare game state to send to server - let server handle turn switching
+      const gameStateToSend = {
+        boardPieces: getState("boardPieces", {}),
+        stackedPieces: getState("stackedPieces", {}),
+        moveHistory: updatedHistory,
+        gameWon: getState("gameWon", false),
+        gameWinner: getState("gameWinner", null),
+        currentPlayer: nextPlayer // Send the next player to server
+      };
+
+      // Send move to server - server will broadcast updated state to all players
+      sendMoveToServer(gameStateToSend);
+
+      // Clear selections and available moves (but don't change currentPlayer - wait for server)
       setState("selectedPieceInventory", null);
       setState("selectedHex", { q: null, r: null });
       setState("movementMode", false);
@@ -851,9 +1133,6 @@ const HiveBoard = (props, context) => {
           isAvailable: false,
         }))
       );
-
-      // Check for win condition after move is confirmed
-      checkWin();
     }
   };
 
@@ -1138,4 +1417,4 @@ const HiveBoard = (props, context) => {
     }),
   };
 };
-export default HiveBoard;
+export default HiveBoardOnline;
