@@ -44,6 +44,7 @@ const BottomBar = (props, context) => {
   }
 
   const handleConfirm = () => {
+    if(!getState('canConfirm', false)) return;
     const confirmMove = getState('confirmMove', null);
     if (confirmMove) {
       confirmMove();
@@ -51,6 +52,7 @@ const BottomBar = (props, context) => {
   };
 
   const handleUndo = () => {
+    if (!getState('canUndo', false)) return;
     const lastMoveType = getState('lastMoveType', null);
     
     if (lastMoveType === 'placement') {
@@ -161,38 +163,111 @@ const BottomBar = (props, context) => {
   return {
     render: () => ({
       div: {
-        className: 'fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-200 shadow-lg z-20 transition-transform duration-300',
-        style: () => ({
-          transform: getState("bottomBarCollapsed", false) ? 'translateY(calc(100% - 60px))' : 'translateY(0)'
-        }),
+        className: 'fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-200 shadow-lg z-20',
         children: [
-          // Mobile toggle button (only visible on mobile)
+          // Always visible action bar with buttons and player info
           {
-            button: {
-              className: 'md:hidden absolute w-8 top-0.5 right-2 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors z-150 border-2 border-gray-200',
-              onclick: toggleCollapse,
+            div: {
+              className: () => `flex items-center justify-between px-3 py-2 bg-white border-b border-gray-200 ${
+                getState('currentPlayer', 'white') === 'white' ? 'bg-gray-50' : 'bg-gray-100'
+              }`,
               children: [
+                // Current player and move info (compact)
                 {
-                  svg: {
-                    className: () => `w-4 h-4 transition-transform duration-300`,
-                    fill: "none",
-                    stroke: "currentColor",
-                    viewBox: "0 0 24 24",
-                    children: ()=>[
-                      getState("bottomBarCollapsed", false) ?
+                  div: {
+                    className: 'flex-1 min-w-0',
+                    children: [
                       {
-                        path: {
-                          strokeLinecap: "round",
-                          strokeLinejoin: "round",
-                          strokeWidth: "2",
-                          d: "M5 15l7-7 7 7"
+                        div: {
+                          className: () => `text-sm font-medium ${
+                            getState('currentPlayer', 'white') === 'white' ? 'text-gray-800' : 'text-gray-800'
+                          }`,
+                          text: ()=> `${getState('currentPlayer', 'white').charAt(0).toUpperCase() + getState('currentPlayer', 'white').slice(1)} - Move ${moveHistory.length + 1}`
                         }
-                      } : {
-                        path: {
-                          strokeLinecap: "round",
-                          strokeLinejoin: "round",
-                          strokeWidth: "2",
-                          d: "M19 9l-7 7-7-7"
+                      },
+                      ...(isQueenRequired() ? [
+                        {
+                          div: {
+                            text: "⚠️ Queen required!",
+                            className: "text-red-500 font-bold text-xs"
+                          }
+                        }
+                      ] : []),
+                      ...(getState("selectedPieceInventory",null) ? [{ 
+                        div: { 
+                          text: ()=> `Selected: ${getState("selectedPieceInventory",null)?.charAt(0).toUpperCase() + getState("selectedPieceInventory",null)?.slice(1)}`,
+                          className: "text-xs text-gray-500"
+                        } 
+                      }] : [])
+                    ]
+                  }
+                },
+                // Mobile toggle button for pieces
+                {
+                  button: {
+                    className: 'md:hidden mx-2 p-1.5 bg-gray-100 rounded hover:bg-gray-200 transition-colors',
+                    onclick: toggleCollapse,
+                    children: [
+                      {
+                        svg: {
+                          className: () => `w-4 h-4 transition-transform duration-300`,
+                          fill: "none",
+                          stroke: "currentColor",
+                          viewBox: "0 0 24 24",
+                          children: ()=>[
+                            getState("bottomBarCollapsed", false) ?
+                            {
+                              path: {
+                                strokeLinecap: "round",
+                                strokeLinejoin: "round",
+                                strokeWidth: "2",
+                                d: "M5 15l7-7 7 7"
+                              }
+                            } : {
+                              path: {
+                                strokeLinecap: "round",
+                                strokeLinejoin: "round",
+                                strokeWidth: "2",
+                                d: "M19 9l-7 7-7-7"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                },
+                // Action buttons (always visible)
+                {
+                  div: {
+                    className: 'flex gap-2',
+                    children: [
+                      {
+                        button: {
+                          text: 'Undo',
+                          className: ()=>`
+                            px-3 py-1.5 text-sm rounded font-medium transition-colors
+                            ${getState('canUndo', false) 
+                              ? 'bg-gray-500 hover:bg-gray-600 text-white' 
+                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            }
+                          `,
+                          onclick: handleUndo,
+                          disabled: ()=> !getState('canUndo', false)
+                        }
+                      },
+                      {
+                        button: {
+                          text: 'Confirm',
+                          className: ()=> `
+                            px-4 py-1.5 text-sm rounded font-medium transition-colors
+                            ${getState('canConfirm', false) 
+                              ? 'bg-green-500 hover:bg-green-600 text-white' 
+                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            }
+                          `,
+                          onclick: handleConfirm,
+                          disabled: ()=>!getState('canConfirm', false )
                         }
                       }
                     ]
@@ -201,102 +276,26 @@ const BottomBar = (props, context) => {
               ]
             }
           },
-          // Current player indicator with Queen requirement warning
+          // Collapsible pieces section
           {
             div: {
-              className: () => `text-center py-2 text-sm font-medium ${
-                getState('currentPlayer', 'white') === 'white' ? 'bg-gray-100 text-gray-800' : 'bg-gray-800 text-white'
+              className: () => `transition-all duration-300 overflow-hidden ${
+                getState("bottomBarCollapsed", false) ? 'max-h-0' : 'max-h-24'
               }`,
               children: [
                 {
                   div: {
-                    text: ()=> `${getState('currentPlayer', 'white').charAt(0).toUpperCase() + getState('currentPlayer', 'white').slice(1)}'s Turn`
-                  }
-                },
-                ...(isQueenRequired() ? [
-                  {
-                    div: {
-                      text: "⚠️ Queen must be placed this turn!",
-                      className: "text-red-500 font-bold text-xs mt-1"
-                    }
-                  }
-                ] : [])
-              ]
-            }
-          },
-          // Main content
-          {
-            div: {
-              className: 'p-4',
-              children: [
-                // Pieces section
-                {
-                  div: {
-                    className: 'mb-4',
+                    className: 'p-2 bg-gray-50',
                     children: [
                       {
-                        h3: {
-                          text: 'Available Pieces',
-                          className: 'text-sm font-medium text-gray-700 mb-2'
-                        }
-                      },
-                      {
-                        PieceInventory: {
-                          pieces: getState('currentPlayer', 'white') === 'white' ? getState('whitePieces', []) : getState('blackPieces', []),
-                          player: getState('currentPlayer', 'white')
-                        }
-                      }
-                    ]
-                  }
-                },
-                // Action buttons
-                {
-                  div: {
-                    className: 'flex justify-between items-center gap-4',
-                    children: [
-                      // Game info
-                      {
                         div: {
-                          className: 'text-xs text-gray-500',
-                          children: ()=>[
-                            { div: { text: `Move: ${moveHistory.length + 1}` } },
-                            ...(getState("selectedPieceInventory",null) ? [{ 
-                              div: { text: `Selected: ${getState("selectedPieceInventory",null)?.charAt(0).toUpperCase() + getState("selectedPieceInventory",null)?.slice(1)}` } 
-                            }] : [])
-                          ]
-                        }
-                      },
-                      // Buttons
-                      {
-                        div: {
-                          className: 'flex gap-2',
+                          className: 'overflow-x-auto justify-center',
                           children: [
                             {
-                              button: {
-                                text: 'Undo',
-                                className: ()=>`
-                                  px-4 py-2 rounded font-medium transition-colors
-                                  ${getState('canUndo', false) 
-                                    ? 'bg-gray-500 hover:bg-gray-600 text-white' 
-                                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                  }
-                                `,
-                                onclick: handleUndo,
-                                disabled: ()=> !getState('canUndo', false)
-                              }
-                            },
-                            {
-                              button: {
-                                text: 'Confirm',
-                                className: ()=> `
-                                  px-6 py-2 rounded font-medium transition-colors
-                                  ${getState('canConfirm', false) 
-                                    ? 'bg-green-500 hover:bg-green-600 text-white' 
-                                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                  }
-                                `,
-                                onclick: handleConfirm,
-                                disabled: ()=>!getState('canConfirm', false )
+                              PieceInventory: {
+                                pieces: getState('currentPlayer', 'white') === 'white' ? getState('whitePieces', []) : getState('blackPieces', []),
+                                player: getState('currentPlayer', 'white'),
+                                compact: true
                               }
                             }
                           ]

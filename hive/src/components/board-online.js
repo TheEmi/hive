@@ -81,11 +81,23 @@ const HiveBoardOnline = (props, context) => {
     if(!getState("currentPlayerLock", false)){
       setState("currentPlayer", serverGameState.currentPlayer);
     }
+    
+    const wasGameWon = getState("gameWon", false);
+    if(!getState("boardPiecesLock", false)){
     setState("boardPieces", serverGameState.boardPieces);
+    }
     setState("stackedPieces", serverGameState.stackedPieces);
     setState("moveHistory", serverGameState.moveHistory);
     setState("gameWon", serverGameState.gameWon);
     setState("gameWinner", serverGameState.gameWinner);
+    
+    // If game just ended (wasn't won before but is now), show popup
+    if (!wasGameWon && serverGameState.gameWon && serverGameState.gameWinner) {
+      setTimeout(() => {
+        setState("showRestartPopup", true);
+      }, 2000);
+    }
+    
     recalculatePieceInventories(serverGameState.moveHistory);
     // Update visual board
     const boardData = getState("boardData", []);
@@ -238,7 +250,9 @@ const HiveBoardOnline = (props, context) => {
     "boardPieces",
     (newValue, oldValue, path) => {
       if (newValue !== oldValue) {
+        setState("boardPiecesLock", true);
         syncGameStateFromGlobal();
+        setState("boardPiecesLock", false);
       }
     }
   );
@@ -1029,6 +1043,12 @@ const HiveBoardOnline = (props, context) => {
           if (showToast) {
             showToast(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins! ${piece.color} queen is surrounded!`);
           }
+          
+          // Show restart popup after a short delay to let the toast appear first
+          setTimeout(() => {
+            setState("showRestartPopup", true);
+          }, 2000);
+          
           return true;
         }
       }

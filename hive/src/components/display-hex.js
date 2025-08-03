@@ -1,4 +1,4 @@
-const HiveHexagon = (props, context) => {
+const HiveHexagonDisplay = (props, context) => {
   const {
     q,
     r,
@@ -218,7 +218,7 @@ const HiveHexagon = (props, context) => {
                                   }
                                 },
                                 {
-                                  HiveHexagonDisplay: {
+                                  HiveHexagon: {
                                     pieceType: piece.type,
                                     pieceColor: piece.color,
                                     size: 50,
@@ -246,4 +246,4 @@ const HiveHexagon = (props, context) => {
     }),
   };
 };
-export default HiveHexagon;
+export default HiveHexagonDisplay;

@@ -111,6 +111,39 @@ const OnlineMenu = (props, context) => {
           setState("gameWinner", message.gameState.gameWinner);
         }
         break;
+      case 'gameRestarted':
+        // Handle restart message from server
+        if (message.gameState) {
+          setState("currentPlayer", message.gameState.currentPlayer);
+          juris.stateManager.beginBatch();
+          setState("boardPieces", message.gameState.boardPieces);
+          juris.stateManager.endBatch();
+          setState("stackedPieces", message.gameState.stackedPieces);
+          setState("moveHistory", message.gameState.moveHistory);
+          setState("gameWon", message.gameState.gameWon);
+          setState("gameWinner", message.gameState.gameWinner);
+          
+          // Reset piece inventories
+          setState("whitePieces", {
+            queen: 1,
+            beetle: 2,
+            grasshopper: 3,
+            spider: 2,
+            ant: 3
+          });
+          setState("blackPieces", {
+            queen: 1,
+            beetle: 2,
+            grasshopper: 3,
+            spider: 2,
+            ant: 3
+          });
+          
+          if (showToast) {
+            showToast("Game restarted!");
+          }
+        }
+        break;
       case 'error':
         if (showToast) {
           showToast(`Error: ${message.message}`);

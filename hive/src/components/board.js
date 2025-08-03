@@ -786,6 +786,12 @@ const HiveBoard = (props, context) => {
           if (showToast) {
             showToast(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins! ${piece.color} queen is surrounded!`);
           }
+          
+          // Show restart popup after a short delay to let the toast appear first
+          setTimeout(() => {
+            setState("showRestartPopup", true);
+          }, 2000);
+          
           return true;
         }
       }
