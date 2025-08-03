@@ -34,7 +34,7 @@ const HiveHexagon = (props, context) => {
   // Get piece image path (you'd replace these with actual image paths)
   const getPieceImage = () => {
     if (!pieceType) return null;
-    return `../public/${pieceType}.svg`;
+    return `${pieceType}.svg`;
   };
 
   // Create hexagon path for SVG
