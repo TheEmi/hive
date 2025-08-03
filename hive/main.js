@@ -1,13 +1,13 @@
-import HiveBoard from "./components/board.js"; 
-import HiveBoardOnline from "./components/board-online.js";
-import BottomBar from "./components/bottom-bar.js";
-import HiveHexagon from "./components/hex.js";
-import MainMenu from "./components/menu.js";
-import OnlineMenu from "./components/online-menu.js";
-import PieceInventory from "./components/piece-inventory.js";
-import InstructionsPage from "./components/instructions.js";
-import Toast from "./components/toast.js";
-import Juris from "./juris/juris.js";
+import HiveBoard from "./src/components/board.js"; 
+import HiveBoardOnline from "./src/components/board-online.js";
+import BottomBar from "./src/components/bottom-bar.js";
+import HiveHexagon from "./src/components/hex.js";
+import MainMenu from "./src/components/menu.js";
+import OnlineMenu from "./src/components/online-menu.js";
+import PieceInventory from "./src/components/piece-inventory.js";
+import InstructionsPage from "./src/components/instructions.js";
+import Toast from "./src/components/toast.js";
+import Juris from "./src/juris/juris.js";
 
 const App = (props, context) => {
   const { getState, setState } = context;

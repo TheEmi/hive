@@ -3,7 +3,7 @@ const OnlineMenu = (props, context) => {
 
   // WebSocket connection
   let ws = null;
-  const serverUrl = 'ws://localhost:8080';
+  const serverUrl = 'wss://hiveapi.hodoroaba.com';
 
   // Initialize WebSocket connection
   const initWebSocket = () => {
@@ -39,7 +39,6 @@ const OnlineMenu = (props, context) => {
         }
       }, 3000);
     };
-
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
       setState("connectionStatus", "error");
