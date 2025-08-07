@@ -60,15 +60,11 @@ const BottomBar = (props, context) => {
       const lastPlacedPiece = getState('lastPlacedPiece', null);
       if (lastPlacedPiece) {
         const { q, r } = lastPlacedPiece;
-        
-        // Remove the piece from board visual
-        setState("boardData", getState("boardData", []).map(hex => {
+        getState("boardData", []).map((hex, index) => {
           if (hex.q === q && hex.r === r) {
-            return { ...hex, pieceType: null, pieceColor: "transparent" };
+            setState(`boardData.${index}`, { ...hex, pieceType: null, pieceColor: "transparent" });
           }
-          return hex;
-        }));
-
+        })
         // Remove from boardPieces and stackedPieces
         const boardPieces = getState("boardPieces", {});
         const stackedPieces = getState("stackedPieces", {});
@@ -119,20 +115,15 @@ const BottomBar = (props, context) => {
           setState("stackedPieces", newStackedPieces);
           
           // Update board visual
-          setState("boardData", getState("boardData", []).map(hex => {
+          getState("boardData", []).map((hex,index) => {
             if (hex.q === lastMoveTo.q && hex.r === lastMoveTo.r) {
               const newTopPiece = currentStack.length > 0 ? currentStack[currentStack.length - 1] : null;
-              return { 
-                ...hex, 
-                pieceType: newTopPiece?.type || null, 
-                pieceColor: newTopPiece?.color || "transparent" 
-              };
+              setState(`boardData.${index}`, { ...hex, pieceType: newTopPiece ? newTopPiece.type : null, pieceColor: newTopPiece ? newTopPiece.color : "transparent" });
             }
             if (hex.q === lastMoveFrom.q && hex.r === lastMoveFrom.r) {
-              return { ...hex, pieceType: movingPiece.type, pieceColor: movingPiece.color };
+              setState(`boardData.${index}`, { ...hex, pieceType: movingPiece.type, pieceColor: movingPiece.color });
             }
-            return hex;
-          }));
+          })
         }
       }
     }
@@ -153,10 +144,9 @@ const BottomBar = (props, context) => {
     setState("lastMoveTo", null);
     
     // Clear all available spaces on the board
-    setState("boardData", getState("boardData", []).map(hex => ({
-      ...hex,
-      isAvailable: false
-    })));
+    getState("boardData", []).map((hex,index) => {
+      setState(`boardData.${index}`, { ...hex, isAvailable: false });
+    });
   };
   setState("undoFunction", handleUndo);
 

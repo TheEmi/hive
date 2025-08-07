@@ -63,15 +63,19 @@ const PieceInventory = (props, context) => {
 
     const currentSelection = getState("selectedPieceInventory", null);
     // Toggle selection - if same piece clicked, deselect
-    juris.stateManager.beginBatch();
     if (currentSelection === pieceType) {
       setState("validMoves", []);
       setState("selectedPieceInventory", null);
+        const newBoardPieces = getState("boardData", []).map((hex,index) => {
+          if (hex.isAvailable) {
+            setState(`boardData.${index}`, { ...hex, isAvailable: false }); // Clear available spaces
+          }
+        });
     } else {
       setState("selectedPieceInventory", pieceType);
+      getState("calculateValidMoves", () => {})();
       setState("movementMode", false);
     }
-    juris.stateManager.endBatch();
     setState("selectedHex", { q: null, r: null }); // Clear selected hex on piece selection
     setState("canConfirm", false);
   };
