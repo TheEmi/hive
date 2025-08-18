@@ -50,5 +50,5 @@ const juris = new Juris({
   layout: { App: {} },
   logLevel:'debug'
 });
-
+console.log(juris);
 juris.render("#app");

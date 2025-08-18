@@ -2,8 +2,8 @@ const HiveHexagon = (props, context) => {
   const {
     q,
     r,
+    index,
     isSelected = false,
-    isAvailable = false,
     isCapturable = false,
     pieceType = null, // 'queen', 'beetle', 'grasshopper', 'spider', 'ant', etc.
     pieceColor = "transparent", // 'white' or 'black'
@@ -12,7 +12,7 @@ const HiveHexagon = (props, context) => {
   } = props;
   const { getState, setState } = context;
 
-  // Get stack height and pieces
+  // Get stack length and pieces
   const getStackInfo = () => {
     const stackedPieces = getState("stackedPieces", {});
     const key = `${q},${r}`;
@@ -33,6 +33,7 @@ const HiveHexagon = (props, context) => {
 
   // Get piece image path (you'd replace these with actual image paths)
   const getPieceImage = () => {
+    const pieceType = getState(`boardData.${index}.pieceType`, null);
     if (!pieceType) return null;
     return `${pieceType}.svg`;
   };
@@ -49,10 +50,10 @@ const HiveHexagon = (props, context) => {
     return `M ${points.join(" L ")} Z`;
   };
 
-  const stackInfo = getStackInfo();
-
+  
   return {
-    render: () => ({
+    render: () => {
+      return {
       div: {
         className: ()=>`relative inline-block cursor-pointer transition-transform duration-200 ${
                       getState("hoveredHex", { r: null, q: null }).r === r &&
@@ -66,7 +67,7 @@ const HiveHexagon = (props, context) => {
         onclick: onClick,
         ontouchstart: (e) => {
           // Close tooltip when tapping on the hex itself (for mobile)
-          if ('ontouchstart' in window && stackInfo.height <= 1) {
+          if ('ontouchstart' in window && getState(`stackedPieces.${q},${r}`, {}).length <= 1) {
             setState("hoveredHex", { r: null, q: null });
           }
         },
@@ -80,15 +81,15 @@ const HiveHexagon = (props, context) => {
               className: () => `absolute inset-0 transition-transform duration-200`,
               style: {
                 pointerEvents: "none",
-                transform:
-                  stackInfo.height > 1
-                    ? `translate(${stackInfo.height}px, ${-stackInfo.height}px)`
+                transform: () =>
+                  getState(`stackedPieces.${q},${r}`, {}).length > 1
+                    ? `translate(${getState(`stackedPieces.${q},${r}`, {}).length}px, ${-getState(`stackedPieces.${q},${r}`, {}).length}px)`
                     : "none",
               },
               children: () => [
                 // Shadow hexagons for stack effect
-                ...(stackInfo.height > 1
-                  ? Array.from({ length: stackInfo.height - 1 }, (_, i) => ({
+                ...(getState(`stackedPieces.${q},${r}`, {}).length > 1
+                  ? Array.from({ length: getState(`stackedPieces.${q},${r}`, {}).length - 1 }, (_, i) => ({
                       path: {
                         d: createHexagonPath(size * 0.8),
                         fill: "#d1d5db",
@@ -109,12 +110,12 @@ const HiveHexagon = (props, context) => {
                       pointerEvents: "auto",
                     },
                     d: createHexagonPath(size * 0.8),
-                    fill: pieceColor === "white" ? "#ffffff" : "#1f1b1bff",
+                    fill: () => getState(`boardData.${index}.pieceColor`, null) === "white" ? "#ffffff" : "#1f1b1bff",
                     "fill-opacity": () =>
-                      pieceColor === "transparent" ? 0.0 : 1,
-                    stroke: getBorderColor(),
+                      getState(`boardData.${index}.pieceColor`, "transparent") === "transparent" ? 0.0 : 1,
+                    stroke: () => getState(`boardData.${index}.isAvailable`, false) ? "#eab308" : getState("selectedHex",{q:null,r:null}).q === q && getState("selectedHex",{q:null,r:null}).r === r ? "#22c55e" : "#6b7280",
                     "stroke-width": () =>
-                      isSelected || isAvailable || isCapturable ? 3 : 1,
+                      getState("selectedHex",{q:null,r:null}).q === q && getState("selectedHex",{q:null,r:null}).r === r || getState(`boardData.${index}.isAvailable`, false) || isCapturable ? 3 : 1,
                     onmouseenter: () => {
                       // Only set hover on non-touch devices
                       if (!('ontouchstart' in window)) {
@@ -144,24 +145,27 @@ const HiveHexagon = (props, context) => {
             },
           },
           // Piece image (top piece only)
-          ...(pieceType
+          ...(getState(`boardData.${index}.pieceType`, null)
             ? [
                 {
                   div: {
                     className: () => `absolute inset-0 flex items-center justify-center transition-transform duration-200`,
-                    style: {
-                      transform:
-                        stackInfo.height > 1
-                          ? `translate(${stackInfo.height}px, ${-stackInfo.height}px)`
+                    style: ()=>({
+                      transform: () =>
+                        getState(`stackedPieces.${q},${r}`, {}).length > 1
+                          ? `translate(${getState(`stackedPieces.${q},${r}`, {}).length}px, ${-getState(`stackedPieces.${q},${r}`, {}).length}px)`
                           : "none",
-                    },
+                    }),
                     children: [
                       {
                         img: {
-                          src: getPieceImage(pieceType),
-                          alt: `${pieceColor} ${pieceType}`,
+                          src: getPieceImage,
+                          alt: `${pieceColor} ${getState(`boardData.${index}.pieceType`, null)} ${getState(`stackedPieces.${q},${r}`, {})}`,
                           className: size < 39 ? "w-13 h-13 object-contain" : "w-15 h-15 object-contain",
                         },
+                        p: {
+                          text: ()=>getState(`stackedPieces.${q},${r}`, {}).length,
+                        }
                       },
                     ],
                   },
@@ -169,21 +173,21 @@ const HiveHexagon = (props, context) => {
               ]
             : []),
           // Stack height indicator
-          ...(stackInfo.height > 1
+          ...(getState(`stackedPieces.${q},${r}`, {}).length > 1
             ? [
                 {
                   div: {
                     className: () => `absolute top-0 right-0 w-5 h-5 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center font-bold z-10 transition-transform duration-200`,
                     style: {
-                      transform: `translate(${stackInfo.height}px, ${-stackInfo.height}px)`,
+                      transform: () => `translate(${getState(`stackedPieces.${q},${r}`, {}).length}px, ${-getState(`stackedPieces.${q},${r}`, {}).length}px)`,
                     },
-                    text: stackInfo.height.toString(),
+                    text: () => getState(`stackedPieces.${q},${r}`, {}).length.toString(),
                   },
                 },
               ]
             : []),
           // Stack tooltip on hover
-          ...(stackInfo.height > 1
+          ...(getState(`stackedPieces.${q},${r}`, {}).length > 1
             ? [
                 {
                   div: {
@@ -207,7 +211,7 @@ const HiveHexagon = (props, context) => {
                       {
                         div: {
                           className: "flex flex-col gap-1",
-                          children: stackInfo.pieces.map((piece, index) => ({
+                          children: () => getState(`stackedPieces.${q},${r}`, {}).map((piece, index) => ({
                             div: {
                               className: "flex items-center gap-2",
                               children: [
@@ -227,8 +231,8 @@ const HiveHexagon = (props, context) => {
                                 },
                                 {
                                   div: {
-                                    className: `text-xs ${index === stackInfo.pieces.length - 1 ? 'font-bold text-yellow-300' : 'text-gray-300'}`,
-                                    text: `${piece.color} ${piece.type}${index === stackInfo.pieces.length - 1 ? ' (top)' : ''}`
+                                    className: () => `text-xs ${index === getState(`stackedPieces.${q},${r}`, {}).length - 1 ? 'font-bold text-yellow-300' : 'text-gray-300'}`,
+                                    text: () => `${piece.color} ${piece.type}${index === getState(`stackedPieces.${q},${r}`, {}).length - 1 ? ' (top)' : ''}`
                                   }
                                 }
                               ]
@@ -243,7 +247,7 @@ const HiveHexagon = (props, context) => {
             : []),
         ],
       },
-    }),
+    }},
   };
 };
 export default HiveHexagon;

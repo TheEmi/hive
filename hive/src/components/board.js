@@ -495,18 +495,13 @@ const HiveBoard = (props, context) => {
     });
 
     // Only update the hexes that should be available
-    juris.stateManager.beginBatch();
-
-    validHexIndices.forEach(index => {
+    validHexIndices.forEach((index) => {
       const hex = boardPieces[index];
       setState(`boardData.${index}`, {
-          ...getState(`boardData.${index}`, {}),
-          isAvailable: true,
-        });
+        ...getState(`boardData.${index}`, {}),
+        isAvailable: true,
+      });
     });
-    juris.stateManager.endBatch();
-
-
     setState("validMoves", validMoves);
   };
   setState("calculateValidMoves", calculateValidMoves);
@@ -518,7 +513,7 @@ const HiveBoard = (props, context) => {
     const selectedPieceForMovement = getState("selectedPieceForMovement", null);
     if (movementMode && selectedPieceForMovement) {
       console.log("Movement mode active");
-      handleMovePiece();
+      handleMovePiece(q, r, index);
     } else if (selectedPiece) {
       console.log("Placement mode active");
       handlePlacePiece(q, r, index);
@@ -576,6 +571,7 @@ const HiveBoard = (props, context) => {
   const handleSelectPieceForMovement = (q, r) => {
     // Select existing piece for movement - FIXED
     const topPiece = getTopPieceAt(q, r);
+    const currentPlayer = getState("currentPlayer", "white");
     if (topPiece && topPiece.color === currentPlayer) {
       // Check if player has placed their queen - can't move pieces until queen is placed
       const hasQueen = getState(`${currentPlayer}Pieces.queen`, 1, false) < 1;
@@ -602,7 +598,7 @@ const HiveBoard = (props, context) => {
 
       // Clear any previous selections
       setState("selectedPieceInventory", null);
-      setState("selectedHex", { q: null, r: null });
+      setState("selectedHex", { q: q, r: r });
 
       // Set movement mode
       setState("selectedPieceForMovement", {
@@ -617,9 +613,9 @@ const HiveBoard = (props, context) => {
       const boardPieces = getState("boardData", []);
       const validMoves = [];
 
-      boardPieces.forEach((hex) => {
+      boardPieces.forEach((hex, index) => {
         if (canPieceMoveTo(q, r, hex.q, hex.r, topPiece.type)) {
-          validMoves.push({ q: hex.q, r: hex.r });
+          validMoves.push({ q: hex.q, r: hex.r, index });
         }
       });
 
@@ -637,19 +633,22 @@ const HiveBoard = (props, context) => {
       }
 
       // Update board with valid moves
+      console.log("Valid moves:", validMoves);
       const newBoardPieces = boardPieces.map((hex, index) => {
-        const isAvailable = validMoves.some(
-          (move) => move.q === hex.q && move.r === hex.r
-        );
-        if (hex.isAvailable && isAvailable !== hex.isAvailable) {
-          setState(`boardData.${index}`, { ...hex, isAvailable }); // Update only if changed
-        }
+        setState(`boardData.${index}.isAvailable`, false); // Update only if changed
+      });
+      validMoves.forEach((move) => {
+        setState(`boardData.${move.index}.isAvailable`, true);
       });
       setState("validMoves", validMoves);
     }
   };
-  const handleMovePiece = () => {
+  const handleMovePiece = (q, r) => {
     // Handle piece movement
+    const validMoves = getState("validMoves", []);
+    const currentPlayer = getState("currentPlayer", "white");
+
+    const selectedPieceForMovement = getState("selectedPieceForMovement", null);
     const isValidMove = validMoves.some((move) => move.q === q && move.r === r);
     if (isValidMove) {
       // Store original position for undo
@@ -668,12 +667,9 @@ const HiveBoard = (props, context) => {
       setState("canUndo", true);
 
       // Clear available moves after movement
-      setState(
-        "boardData",
-        getState("boardData", []).map((hex) => ({
-          ...hex,
-          isAvailable: false,
-        }))
+      validMoves.forEach((move) => {
+        setState(`boardData.${move.index}.isAvailable`, false);
+      }
       );
     } else {
       // Click on invalid move location or different piece - clear movement mode
@@ -714,60 +710,65 @@ const HiveBoard = (props, context) => {
 
     // Update board visual
     setState(`boardData.${index}`, {
-          ...getState(`boardData.${index}`, {}),
-          pieceType,
-          pieceColor: color,
-        });
+      ...getState(`boardData.${index}`, {}),
+      pieceType,
+      pieceColor: color,
+    });
   };
 
   const movePiece = (fromQ, fromR, toQ, toR) => {
     const boardPieces = getState("boardPieces", {});
-    const stackedPieces = getState("stackedPieces", {});
+    const fromStack = getState(`stackedPieces.${fromQ},${fromR}`, []);
+    const toStackOrigin = getState(`stackedPieces.${toQ},${toR}`, []);
     const fromKey = pieceKey(fromQ, fromR);
     const toKey = pieceKey(toQ, toR);
 
-    const fromStack = stackedPieces[fromKey] || [];
     const movingPiece = fromStack.pop();
 
     if (fromStack.length === 0) {
       delete boardPieces[fromKey];
-      delete stackedPieces[fromKey];
     } else {
       boardPieces[fromKey] = {
         ...fromStack[fromStack.length - 1],
         height: fromStack.length,
       };
-      stackedPieces[fromKey] = fromStack;
+      setState(`stackedPieces.${fromQ},${fromR}`, fromStack);
     }
 
     // Place at destination
     if (movingPiece.type === "beetle" && isPieceAt(toQ, toR)) {
-      const toStack = stackedPieces[toKey] || [boardPieces[toKey]];
+      const toStack = toStackOrigin || [boardPieces[toKey]];
       toStack.push(movingPiece);
-      stackedPieces[toKey] = toStack;
+      setState(`stackedPieces.${toQ},${toR}`, toStack);
+      //stackedPieces[toKey] = toStack;
       boardPieces[toKey] = { ...movingPiece, height: toStack.length };
     } else {
       boardPieces[toKey] = { ...movingPiece, height: 1 };
-      stackedPieces[toKey] = [movingPiece];
+      setState(`stackedPieces.${toQ},${toR}`, [movingPiece]);
+      //stackedPieces[toKey] = [movingPiece];
     }
 
     setState("boardPieces", boardPieces);
-    setState("stackedPieces", stackedPieces);
+    //setState("stackedPieces", stackedPieces);
 
-    // Update visual board
-    setState(
-      "boardData",
-      getState("boardData", []).map((hex) => {
+      getState("boardData", []).map((hex, index) => {
         if (hex.q === fromQ && hex.r === fromR) {
           const newTopPiece =
-            fromStack.length > 0 ? fromStack[fromStack.length - 1] : null;
-          return {
+            fromStack.length > 0 ? fromStack.at(-1) : null;
+            console.log("newTopPiece", newTopPiece);
+          setState(`boardData.${index}`, {
             ...hex,
             pieceType: newTopPiece?.type || null,
             pieceColor: newTopPiece?.color || "transparent",
-          };
+          });
+          return;
         }
         if (hex.q === toQ && hex.r === toR) {
+          setState(`boardData.${index}`, {
+            ...hex,
+            pieceType: movingPiece?.type || null,
+            pieceColor: movingPiece?.color || "transparent",
+          });
           return {
             ...hex,
             pieceType: movingPiece.type,
@@ -776,7 +777,6 @@ const HiveBoard = (props, context) => {
         }
         return hex;
       })
-    );
   };
 
   // Check win function
@@ -870,12 +870,9 @@ const HiveBoard = (props, context) => {
       setState("lastMoveTo", null);
 
       // Clear all available spaces on the board
-      setState(
-        "boardData",
-        getState("boardData", []).map((hex) => ({
-          ...hex,
-          isAvailable: false,
-        }))
+
+      getState("boardData", []).map((hex, index) =>
+        setState(`boardData.${index}.isAvailable`, false)
       );
 
       // Check for win condition after move is confirmed
@@ -1122,6 +1119,7 @@ const HiveBoard = (props, context) => {
                     }),
                     children: () => {
                       const boardPieces = getState("boardData", [], false);
+
                       return boardPieces.map((hex, index) => {
                         const { x, y } = hexToPixel(hex.q, hex.r, hexSize);
                         //console.log("Rendering hex:", hex.q, hex.r, "isAvailable:", hex.isAvailable);
@@ -1138,6 +1136,7 @@ const HiveBoard = (props, context) => {
                                 HiveHexagon: {
                                   q: hex.q,
                                   r: hex.r,
+                                  index: index,
                                   pieceType: hex.pieceType,
                                   pieceColor: hex.pieceColor,
                                   isSelected:
@@ -1153,8 +1152,8 @@ const HiveBoard = (props, context) => {
                                       r: null,
                                       q: null,
                                     }).q === hex.q,
-                                  isAvailable: getState(`boardData.${index}.isAvailable`, false),
-                                  onClick: () => handleHexClick(hex.q, hex.r, index),
+                                  onClick: () =>
+                                    handleHexClick(hex.q, hex.r, index),
                                   size: hexSize,
                                 },
                               },

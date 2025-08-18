@@ -120,7 +120,7 @@ const PieceInventory = (props, context) => {
                 `,
                 children: [
                   {
-                    HiveHexagon: {
+                    HiveHexagonDisplay: {
                       pieceType: type,
                       pieceColor: getState("currentPlayer", "white", false),
                       isSelected:
