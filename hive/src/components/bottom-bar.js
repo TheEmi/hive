@@ -172,7 +172,7 @@ const BottomBar = (props, context) => {
                           className: () => `text-sm font-medium ${
                             getState('currentPlayer', 'white') === 'white' ? 'text-gray-800' : 'text-gray-800'
                           }`,
-                          text: ()=> `${getState('currentPlayer', 'white').charAt(0).toUpperCase() + getState('currentPlayer', 'white').slice(1)} - Move ${moveHistory.length + 1}`
+                          text: ()=> `${getState('currentPlayer', 'white').charAt(0).toUpperCase() + getState('currentPlayer', 'white').slice(1)}'s turn`
                         }
                       },
                       ...(isQueenRequired() ? [
