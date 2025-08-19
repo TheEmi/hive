@@ -198,7 +198,7 @@ const HiveHexagon = (props, context) => {
                     getState("hoveredHex", { r: null, q: null }).r === r &&
                     getState("hoveredHex", { r: null, q: null }).q === q
                       ? "opacity-100"
-                      : ""
+                      : "pointer-events-none"
                   }
                 `,
                     children: () => [

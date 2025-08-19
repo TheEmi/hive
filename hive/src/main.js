@@ -10,7 +10,6 @@ import Toast from "./components/toast.js";
 import RestartPopup from "./components/restart-popup.js";
 import Juris from "juris";
 import HiveHexagonDisplay from "./components/display-hex.js";
-console.log("Here");
 const App = (props, context) => {
   const { getState, setState } = context;
 
@@ -50,5 +49,4 @@ const juris = new Juris({
   layout: { App: {} },
   logLevel:'debug'
 });
-console.log(juris);
 juris.render("#app");

@@ -71,10 +71,28 @@ const PieceInventory = (props, context) => {
             setState(`boardData.${index}`, { ...hex, isAvailable: false }); // Clear available spaces
           }
         });
+        
+      // Call online handler if in online mode
+      const gameMode = getState("gameMode", "local");
+      if (gameMode === "online") {
+        const handlePieceInventoryChange = getState("handlePieceInventoryChange", null);
+        if (handlePieceInventoryChange) {
+          handlePieceInventoryChange();
+        }
+      }
     } else {
       setState("selectedPieceInventory", pieceType);
       getState("calculateValidMoves", () => {})();
       setState("movementMode", false);
+      
+      // Call online handler if in online mode
+      const gameMode = getState("gameMode", "local");
+      if (gameMode === "online") {
+        const handlePieceInventoryChange = getState("handlePieceInventoryChange", null);
+        if (handlePieceInventoryChange) {
+          handlePieceInventoryChange();
+        }
+      }
     }
     setState("selectedHex", { q: null, r: null }); // Clear selected hex on piece selection
     setState("canConfirm", false);

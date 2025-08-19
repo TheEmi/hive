@@ -204,6 +204,11 @@ const HiveBoardOnline = (props, context) => {
 
   // Cleanup animation frames on component unmount
   const cleanup = () => {
+    // Cancel any pending animation frames
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
     // Close WebSocket connection
     setState("shouldReconnect", false);
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -216,46 +221,6 @@ const HiveBoardOnline = (props, context) => {
     window.addEventListener('beforeunload', cleanup);
     window.addEventListener('pagehide', cleanup);
   }
-
-  const unsubscribe = subscribe(
-    "selectedPieceInventory",
-    (newValue, oldValue, path) => {
-      if (newValue) {
-        calculateValidMoves();
-      } else {
-        const boardPieces = getState("boardData", []);
-        const newBoardPieces = boardPieces.map((hex) => {
-          return { ...hex, isAvailable: false };
-        });
-        setState("boardData", newBoardPieces);
-      }
-    }
-  );
-
-  // Subscribe to game state changes from server (via online-menu)
-  const unsubscribeGameState = subscribe(
-    "currentPlayer",
-    (newValue, oldValue, path) => {
-      if (newValue && newValue !== oldValue) {
-        // Handle board-specific updates when game state changes
-        setState("currentPlayerLock", true);
-        handleGameStateUpdate();
-        setState("currentPlayerLock", false);
-      }
-    }
-  );
-
-  // Subscribe to board pieces changes to update visual board
-  const unsubscribeBoardPieces = subscribe(
-    "boardPieces",
-    (newValue, oldValue, path) => {
-      if (newValue !== oldValue) {
-        setState("boardPiecesLock", true);
-        syncGameStateFromGlobal();
-        setState("boardPiecesLock", false);
-      }
-    }
-  );
 
   // Function to sync game state from global state (updated by online-menu)
   const syncGameStateFromGlobal = () => {
@@ -271,7 +236,49 @@ const HiveBoardOnline = (props, context) => {
     syncGameState(serverGameState);
   };
 
-  //Subscribe to menu piece selection
+  // Handle piece inventory selection changes for online games
+  const handlePieceInventoryChange = () => {
+    const selectedPiece = getState("selectedPieceInventory", null);
+    if (selectedPiece) {
+      calculateValidMoves();
+    } else {
+      // Clear available moves when deselecting
+      const boardPieces = getState("boardData", []);
+      boardPieces.forEach((hex, index) => {
+        if (hex.isAvailable) {
+          setState(`boardData.${index}`, {
+            ...hex,
+            isAvailable: false,
+          });
+        }
+      });
+    }
+  };
+
+  // Store the handler in state so piece-inventory can call it
+  setState("handlePieceInventoryChange", handlePieceInventoryChange);
+
+  // Handle game state updates from server
+  const handleServerGameStateUpdate = () => {
+    const showToast = getState("showToast", null);
+    const playerColor = getState("playerColor", null);
+    const currentPlayer = getState("currentPlayer", "white");
+    const isMyTurn = currentPlayer === playerColor;    
+    
+    if (showToast) {
+      if (isMyTurn) {
+        showToast("Your turn!");
+      } else {
+        showToast("Opponent's turn");
+      }
+    }
+    
+    // Update visual board
+    syncGameStateFromGlobal();
+  };
+
+  // Store the handler in state so online-menu can call it
+  setState("handleServerGameStateUpdate", handleServerGameStateUpdate);
 
   // Game logic functions
   const getNeighbors = (q, r) => [
@@ -400,7 +407,10 @@ const HiveBoardOnline = (props, context) => {
     if (!piece) return false;
 
     // Check if hive stays connected when piece is moved
-    if (!isHiveConnected(fromQ, fromR)) return false;
+    // Only exclude the position if removing the piece would leave it empty
+    const stackAtFrom = getStackAt(fromQ, fromR);
+    const wouldBeEmpty = stackAtFrom.length <= 1;
+    if (wouldBeEmpty && !isHiveConnected(fromQ, fromR)) return false;
 
     switch (pieceType) {
       case "queen":
@@ -700,27 +710,38 @@ const HiveBoardOnline = (props, context) => {
         const [q, r] = pos.split(",").map(Number);
         let canPlace = isValidPlacement(q, r, currentPlayer);
         // Note: Beetles can only stack during movement, not initial placement
-        
+
         if (canPlace) {
           validMoves.push({ q, r });
         }
       });
     }
 
-    // Fix the mapping logic
-    const newBoardPieces = boardPieces.map((hex) => {
+    // Efficiently update only the valid hexes by storing their indices
+    const validHexIndices = [];
+    boardPieces.forEach((hex, index) => {
       const { q, r } = hex;
       const isAvailable = validMoves.some(
         (move) => move.q === q && move.r === r
       );
-      return { ...hex, isAvailable };
+      if (isAvailable) {
+        validHexIndices.push(index);
+      }
     });
-    setState("boardData", newBoardPieces);
+
+    // Only update the hexes that should be available
+    validHexIndices.forEach((index) => {
+      const hex = boardPieces[index];
+      setState(`boardData.${index}`, {
+        ...getState(`boardData.${index}`, {}),
+        isAvailable: true,
+      });
+    });
     setState("validMoves", validMoves);
   };
   setState("calculateValidMoves", calculateValidMoves);
 
-  const handleHexClick = (q, r) => {
+  const handleHexClick = (q, r, index) => {
     if(getState("gameWon", false)) return; // Ignore clicks if game is already won
     
     // Check if it's this player's turn
@@ -744,197 +765,195 @@ const HiveBoardOnline = (props, context) => {
     }
 
     const selectedPiece = getState("selectedPieceInventory", null);
-    const validMoves = getState("validMoves", []);
     const movementMode = getState("movementMode", false);
     const selectedPieceForMovement = getState("selectedPieceForMovement", null);
+    
     if (movementMode && selectedPieceForMovement) {
-      // Handle piece movement
-      const isValidMove = validMoves.some(
-        (move) => move.q === q && move.r === r
-      );
-      if (isValidMove) {
-        // Store original position for undo
-        setState("lastMoveFrom", {
-          q: selectedPieceForMovement.q,
-          r: selectedPieceForMovement.r,
-        });
-        setState("lastMoveTo", { q, r });
-        setState("lastMoveType", "movement");
-
-        movePiece(selectedPieceForMovement.q, selectedPieceForMovement.r, q, r);
-        setState("movementMode", false);
-        setState("selectedPieceForMovement", null);
-        setState("selectedHex", { q, r });
-        setState("canConfirm", true);
-        setState("canUndo", true);
-
-        // Clear available moves after movement
-        setState(
-          "boardData",
-          getState("boardData", []).map((hex) => ({
-            ...hex,
-            isAvailable: false,
-          }))
-        );
-      } else {
-        // Click on invalid move location or different piece - clear movement mode
-        setState("movementMode", false);
-        setState("selectedPieceForMovement", null);
-        setState("validMoves", []);
-        setState(
-          "boardData",
-          getState("boardData", []).map((hex) => ({
-            ...hex,
-            isAvailable: false,
-          }))
-        );
-        
-        // If clicked on another piece of same player, select it for movement
-        const topPiece = getTopPieceAt(q, r);
-        if (topPiece && topPiece.color === currentPlayer) {
-          // Recursively call to select the new piece
-          handleHexClick(q, r);
-        }
-      }
+      handleMovePiece(q, r, index);
     } else if (selectedPiece) {
-      // Handle piece placement
-      const isValidMove = validMoves.some(
-        (move) => move.q === q && move.r === r
-      );
-      if (isValidMove) {
-        // Check if there's already a pending move that needs to be confirmed
-        const canConfirm = getState("canConfirm", false);
-        if (canConfirm) {
-          const showToast = getState("showToast", null);
-          if (showToast) {
-            showToast("Please confirm or undo the current move first!");
-          }
-          return;
-        }
-        
-        // Store placement info for undo
-        setState("lastMoveType", "placement");
-        setState("lastPlacedPiece", {
-          q,
-          r,
-          type: selectedPiece,
-          color: currentPlayer,
-        });
+      handlePlacePiece(q, r, index);
+    } else {
+      handleSelectPieceForMovement(q, r);
+    }
+  };
 
-        placePiece(q, r, selectedPiece, currentPlayer);
-        setState("selectedHex", { q, r });
-        setState("canConfirm", true);
-        setState("canUndo", true);
-
-        // Clear available moves after placement
-        setState(
-          "boardData",
-          getState("boardData", []).map((hex) => ({
-            ...hex,
-            isAvailable: false,
-          }))
-        );
-      } else {
-        // Invalid placement - do nothing, don't allow clicking on unavailable hexes
+  const handlePlacePiece = (q, r, index) => {
+    // Handle piece placement
+    const validMoves = getState("validMoves", []);
+    const isValidMove = validMoves.some((move) => move.q === q && move.r === r);
+    if (isValidMove) {
+      // Check if there's already a pending move that needs to be confirmed
+      const canConfirm = getState("canConfirm", false);
+      if (canConfirm) {
         const showToast = getState("showToast", null);
         if (showToast) {
-          showToast("Piece can only be placed on highlighted hexes");
+          showToast("Please confirm or undo the current move first!");
         }
+        return;
       }
-    } else {
-      // Select existing piece for movement - FIXED
-      const topPiece = getTopPieceAt(q, r);
-      if (topPiece && topPiece.color === currentPlayer) {
-        // Additional check: make sure it's actually the player's turn
-        const playerColor = getState("playerColor", null);
-        if (currentPlayer !== playerColor) {
-          const showToast = getState("showToast", null);
-          if (showToast) {
-            showToast("Wait for your turn!");
-          }
-          return;
-        }
-        
-        // Check if game has started
-        if (!getState("gameStarted", false)) {
-          const showToast = getState("showToast", null);
-          if (showToast) {
-            showToast("Waiting for opponent to join...");
-          }
-          return;
-        }
-        
-        // Check if player has placed their queen - can't move pieces until queen is placed
-        const hasQueen = getState(`${currentPlayer}Pieces.queen`, 1, false) < 1;
-        if (!hasQueen) {
-          const showToast = getState("showToast", null);
-          if (showToast) {
-            showToast(`Cannot move pieces - ${currentPlayer} must place Queen first!`);
-          }
-          return;
-        }
-        
-        // Check if there's a pending move that needs to be confirmed
-        const canConfirm = getState("canConfirm", false);
-        const lastMoveType = getState("lastMoveType", null);
-        if (canConfirm && lastMoveType === "movement") {
-          const showToast = getState("showToast", null);
-          if (showToast) {
-            showToast("Please confirm or undo the current move first!");
-          }
-          return;
-        }
-        
-        // Clear any previous selections
-        setState("selectedPieceInventory", null);
-        setState("selectedHex", { q: null, r: null });
 
-        // Set movement mode
-        setState("selectedPieceForMovement", {
-          q,
-          r,
-          type: topPiece.type,
-          color: topPiece.color,
-        });
-        setState("movementMode", true);
-        
-        // Calculate valid moves and check if piece can actually move
-        const boardPieces = getState("boardData", []);
-        const validMoves = [];
-        
-        boardPieces.forEach((hex) => {
-          if (canPieceMoveTo(q, r, hex.q, hex.r, topPiece.type)) {
-            validMoves.push({ q: hex.q, r: hex.r });
-          }
-        });
-        
-        // If no valid moves, clear the selection immediately
-        if (validMoves.length === 0) {
-          setState("movementMode", false);
-          setState("selectedPieceForMovement", null);
-          setState("validMoves", []);
-          const showToast = getState("showToast", null);
-          if (showToast) {
-            
-            showToast(`This ${topPiece.type} cannot move from this position`);
-          }
-          return;
-        }
-        
-        // Update board with valid moves
-        const newBoardPieces = boardPieces.map((hex) => {
-          const isAvailable = validMoves.some(
-            (move) => move.q === hex.q && move.r === hex.r
-          );
-          return { ...hex, isAvailable };
-        });
-        setState("boardData", newBoardPieces);
-        setState("validMoves", validMoves);
+      // Store placement info for undo
+      const selectedPiece = getState("selectedPieceInventory", null);
+      const currentPlayer = getState("currentPlayer", "white");
+      setState("lastMoveType", "placement");
+      setState("lastPlacedPiece", {
+        q,
+        r,
+        type: selectedPiece,
+        color: currentPlayer,
+      });
+
+      placePiece(q, r, selectedPiece, currentPlayer, index);
+      setState("selectedHex", { q, r });
+      setState("canConfirm", true);
+      setState("canUndo", true);
+
+      // Clear available moves after placement
+      getState("boardData", []).map((hex, index) =>
+        setState(`boardData.${index}`, {
+          ...hex,
+          isAvailable: false,
+        })
+      );
+    } else {
+      // Invalid placement - do nothing, don't allow clicking on unavailable hexes
+      const showToast = getState("showToast", null);
+      if (showToast) {
+        showToast("Piece can only be placed on highlighted hexes");
       }
     }
   };
 
-  const placePiece = (q, r, pieceType, color) => {
+  const handleSelectPieceForMovement = (q, r) => {
+    // Select existing piece for movement - FIXED
+    const topPiece = getTopPieceAt(q, r);
+    const currentPlayer = getState("currentPlayer", "white");
+    if (topPiece && topPiece.color === currentPlayer) {
+      // Check if player has placed their queen - can't move pieces until queen is placed
+      const hasQueen = getState(`${currentPlayer}Pieces.queen`, 1, false) < 1;
+      if (!hasQueen) {
+        const showToast = getState("showToast", null);
+        if (showToast) {
+          showToast(
+            `Cannot move pieces - ${currentPlayer} must place Queen first!`
+          );
+        }
+        return;
+      }
+
+      // Check if there's a pending move that needs to be confirmed
+      const canConfirm = getState("canConfirm", false);
+      const lastMoveType = getState("lastMoveType", null);
+      if (canConfirm && lastMoveType === "movement") {
+        const showToast = getState("showToast", null);
+        if (showToast) {
+          showToast("Please confirm or undo the current move first!");
+        }
+        return;
+      }
+
+      // Clear any previous selections
+      setState("selectedPieceInventory", null);
+      setState("selectedHex", { q, r });
+
+      // Set movement mode
+      setState("selectedPieceForMovement", {
+        q,
+        r,
+        type: topPiece.type,
+        color: topPiece.color,
+      });
+      setState("movementMode", true);
+
+      // Calculate valid moves and check if piece can actually move
+      const boardPieces = getState("boardData", []);
+      const validMoves = [];
+
+      boardPieces.forEach((hex, index) => {
+        if (canPieceMoveTo(q, r, hex.q, hex.r, topPiece.type)) {
+          validMoves.push({ q: hex.q, r: hex.r, index });
+        }
+      });
+
+      // If no valid moves, clear the selection immediately
+      if (validMoves.length === 0) {
+        setState("movementMode", false);
+        setState("selectedPieceForMovement", null);
+        setState("validMoves", []);
+        const showToast = getState("showToast", null);
+        if (showToast) {
+          showToast(`This ${topPiece.type} cannot move from this position`);
+        }
+        return;
+      }
+
+      // Update board with valid moves
+      const newBoardPieces = boardPieces.map((hex, index) => {
+        setState(`boardData.${index}.isAvailable`, false); // Update only if changed
+      });
+      validMoves.forEach((move) => {
+        setState(`boardData.${move.index}.isAvailable`, true);
+      });
+      setState("validMoves", validMoves);
+    }
+  };
+
+  const handleMovePiece = (q, r, index) => {
+    // Handle piece movement
+    const validMoves = getState("validMoves", []);
+    const currentPlayer = getState("currentPlayer", "white");
+
+    const selectedPieceForMovement = getState("selectedPieceForMovement", null);
+    const isValidMove = validMoves.some((move) => move.q === q && move.r === r);
+    if (isValidMove) {
+      // Store original position for undo
+      setState("lastMoveFrom", {
+        q: selectedPieceForMovement.q,
+        r: selectedPieceForMovement.r,
+      });
+      setState("lastMoveTo", { q, r });
+      setState("lastMoveType", "movement");
+
+      // Store the original stack state for proper undo
+      const originalFromStack = getStackAt(selectedPieceForMovement.q, selectedPieceForMovement.r);
+      const originalToStack = getStackAt(q, r);
+      setState("lastMoveOriginalFromStack", [...originalFromStack]);
+      setState("lastMoveOriginalToStack", [...originalToStack]);
+
+      movePiece(selectedPieceForMovement.q, selectedPieceForMovement.r, q, r);
+      setState("movementMode", false);
+      setState("selectedPieceForMovement", null);
+      setState("selectedHex", { q, r });
+      setState("canConfirm", true);
+      setState("canUndo", true);
+
+      // Clear available moves after movement
+      validMoves.forEach((move) => {
+        setState(`boardData.${move.index}.isAvailable`, false);
+      });
+    } else {
+      // Click on invalid move location or different piece - clear movement mode
+      setState("movementMode", false);
+      setState("selectedPieceForMovement", null);
+      setState("validMoves", []);
+      setState(
+        "boardData",
+        getState("boardData", []).map((hex) => ({
+          ...hex,
+          isAvailable: false,
+        }))
+      );
+
+      // If clicked on another piece of same player, select it for movement
+      const topPiece = getTopPieceAt(q, r);
+      if (topPiece && topPiece.color === currentPlayer) {
+        // Recursively call to select the new piece
+        handleHexClick(q, r, index);
+      }
+    }
+  };
+
+  const placePiece = (q, r, pieceType, color, index) => {
     const boardPieces = getState("boardPieces", {});
     const stackedPieces = getState("stackedPieces", {});
     const key = pieceKey(q, r);
@@ -950,74 +969,70 @@ const HiveBoardOnline = (props, context) => {
     });
 
     // Update board visual
-    setState(
-      "boardData",
-      getState("boardData", []).map((hex) => {
-        if (hex.q === q && hex.r === r) {
-          return { ...hex, pieceType, pieceColor: color };
-        }
-        return hex;
-      })
-    );
+    setState(`boardData.${index}`, {
+      ...getState(`boardData.${index}`, {}),
+      pieceType,
+      pieceColor: color,
+    });
   };
 
   const movePiece = (fromQ, fromR, toQ, toR) => {
     const boardPieces = getState("boardPieces", {});
-    const stackedPieces = getState("stackedPieces", {});
+    const fromStack = getState(`stackedPieces.${fromQ},${fromR}`, []);
+    const toStackOrigin = getState(`stackedPieces.${toQ},${toR}`, []);
     const fromKey = pieceKey(fromQ, fromR);
     const toKey = pieceKey(toQ, toR);
 
-    const fromStack = stackedPieces[fromKey] || [];
     const movingPiece = fromStack.pop();
 
     if (fromStack.length === 0) {
       delete boardPieces[fromKey];
-      delete stackedPieces[fromKey];
     } else {
       boardPieces[fromKey] = {
         ...fromStack[fromStack.length - 1],
         height: fromStack.length,
       };
-      stackedPieces[fromKey] = fromStack;
+      setState(`stackedPieces.${fromQ},${fromR}`, fromStack);
     }
 
     // Place at destination
     if (movingPiece.type === "beetle" && isPieceAt(toQ, toR)) {
-      const toStack = stackedPieces[toKey] || [boardPieces[toKey]];
+      const toStack = toStackOrigin || [boardPieces[toKey]];
       toStack.push(movingPiece);
-      stackedPieces[toKey] = toStack;
+      setState(`stackedPieces.${toQ},${toR}`, toStack);
       boardPieces[toKey] = { ...movingPiece, height: toStack.length };
     } else {
       boardPieces[toKey] = { ...movingPiece, height: 1 };
-      stackedPieces[toKey] = [movingPiece];
+      setState(`stackedPieces.${toQ},${toR}`, [movingPiece]);
     }
 
     setState("boardPieces", boardPieces);
-    setState("stackedPieces", stackedPieces);
 
-    // Update visual board
-    setState(
-      "boardData",
-      getState("boardData", []).map((hex) => {
-        if (hex.q === fromQ && hex.r === fromR) {
-          const newTopPiece =
-            fromStack.length > 0 ? fromStack[fromStack.length - 1] : null;
-          return {
-            ...hex,
-            pieceType: newTopPiece?.type || null,
-            pieceColor: newTopPiece?.color || "transparent",
-          };
-        }
-        if (hex.q === toQ && hex.r === toR) {
-          return {
-            ...hex,
-            pieceType: movingPiece.type,
-            pieceColor: movingPiece.color,
-          };
-        }
-        return hex;
-      })
-    );
+    getState("boardData", []).map((hex, index) => {
+      if (hex.q === fromQ && hex.r === fromR) {
+        const newTopPiece =
+          fromStack.length > 0 ? fromStack.at(-1) : null;
+        setState(`boardData.${index}`, {
+          ...hex,
+          pieceType: newTopPiece?.type || null,
+          pieceColor: newTopPiece?.color || "transparent",
+        });
+        return;
+      }
+      if (hex.q === toQ && hex.r === toR) {
+        setState(`boardData.${index}`, {
+          ...hex,
+          pieceType: movingPiece?.type || null,
+          pieceColor: movingPiece?.color || "transparent",
+        });
+        return {
+          ...hex,
+          pieceType: movingPiece.type,
+          pieceColor: movingPiece.color,
+        };
+      }
+      return hex;
+    });
   };
 
   // Check win function
@@ -1144,14 +1159,12 @@ const HiveBoardOnline = (props, context) => {
       setState("lastPlacedPiece", null);
       setState("lastMoveFrom", null);
       setState("lastMoveTo", null);
+      setState("lastMoveOriginalFromStack", null);
+      setState("lastMoveOriginalToStack", null);
 
       // Clear all available spaces on the board
-      setState(
-        "boardData",
-        getState("boardData", []).map((hex) => ({
-          ...hex,
-          isAvailable: false,
-        }))
+      getState("boardData", []).map((hex, index) =>
+        setState(`boardData.${index}.isAvailable`, false)
       );
     }
   };
@@ -1390,9 +1403,10 @@ const HiveBoardOnline = (props, context) => {
                       backfaceVisibility: "hidden",
                     }),
                     children: () => {
-                      return getState("boardData", []).map((hex) => {
+                      const boardPieces = getState("boardData", [], false);
+
+                      return boardPieces.map((hex, index) => {
                         const { x, y } = hexToPixel(hex.q, hex.r, hexSize);
-                        //console.log("Rendering hex:", hex.q, hex.r, "isAvailable:", hex.isAvailable);
                         return {
                           div: {
                             style: () => ({
@@ -1406,19 +1420,25 @@ const HiveBoardOnline = (props, context) => {
                                 HiveHexagon: {
                                   q: hex.q,
                                   r: hex.r,
+                                  index: index,
                                   pieceType: hex.pieceType,
                                   pieceColor: hex.pieceColor,
                                   isSelected:
-                                    getState("selectedHex", {
-                                      r: null,
-                                      q: null,
-                                    }, false).r === hex.r &&
+                                    getState(
+                                      "selectedHex",
+                                      {
+                                        r: null,
+                                        q: null,
+                                      },
+                                      false
+                                    ).r === hex.r &&
                                     getState("selectedHex", {
                                       r: null,
                                       q: null,
                                     }).q === hex.q,
                                   isAvailable: hex.isAvailable,
-                                  onClick: () => handleHexClick(hex.q, hex.r),
+                                  onClick: () =>
+                                    handleHexClick(hex.q, hex.r, index),
                                   size: hexSize,
                                 },
                               },

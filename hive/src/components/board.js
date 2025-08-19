@@ -166,7 +166,10 @@ const HiveBoard = (props, context) => {
     if (!piece) return false;
 
     // Check if hive stays connected when piece is moved
-    if (!isHiveConnected(fromQ, fromR)) return false;
+    // Only exclude the position if removing the piece would leave it empty
+    const stackAtFrom = getStackAt(fromQ, fromR);
+    const wouldBeEmpty = stackAtFrom.length <= 1;
+    if (wouldBeEmpty && !isHiveConnected(fromQ, fromR)) return false;
 
     switch (pieceType) {
       case "queen":
@@ -512,13 +515,10 @@ const HiveBoard = (props, context) => {
     const movementMode = getState("movementMode", false);
     const selectedPieceForMovement = getState("selectedPieceForMovement", null);
     if (movementMode && selectedPieceForMovement) {
-      console.log("Movement mode active");
       handleMovePiece(q, r, index);
     } else if (selectedPiece) {
-      console.log("Placement mode active");
       handlePlacePiece(q, r, index);
     } else {
-      console.log("Selection mode active");
       handleSelectPieceForMovement(q, r);
     }
   };
@@ -625,7 +625,6 @@ const HiveBoard = (props, context) => {
         setState("selectedPieceForMovement", null);
         setState("validMoves", []);
         const showToast = getState("showToast", null);
-        console.log("toast?", showToast);
         if (showToast) {
           showToast(`This ${topPiece.type} cannot move from this position`);
         }
@@ -633,7 +632,6 @@ const HiveBoard = (props, context) => {
       }
 
       // Update board with valid moves
-      console.log("Valid moves:", validMoves);
       const newBoardPieces = boardPieces.map((hex, index) => {
         setState(`boardData.${index}.isAvailable`, false); // Update only if changed
       });
@@ -658,6 +656,12 @@ const HiveBoard = (props, context) => {
       });
       setState("lastMoveTo", { q, r });
       setState("lastMoveType", "movement");
+      
+      // Store the original stack state for proper undo
+      const originalFromStack = getStackAt(selectedPieceForMovement.q, selectedPieceForMovement.r);
+      const originalToStack = getStackAt(q, r);
+      setState("lastMoveOriginalFromStack", [...originalFromStack]);
+      setState("lastMoveOriginalToStack", [...originalToStack]);
 
       movePiece(selectedPieceForMovement.q, selectedPieceForMovement.r, q, r);
       setState("movementMode", false);
@@ -755,7 +759,6 @@ const HiveBoard = (props, context) => {
         if (hex.q === fromQ && hex.r === fromR) {
           const newTopPiece =
             fromStack.length > 0 ? fromStack.at(-1) : null;
-            console.log("newTopPiece", newTopPiece);
           setState(`boardData.${index}`, {
             ...hex,
             pieceType: newTopPiece?.type || null,
@@ -837,7 +840,6 @@ const HiveBoard = (props, context) => {
         const pieceKey = `${currentPlayer}Pieces.${selectedPiece}`;
         const currentCount = getState(pieceKey, 0);
         const newCount = Math.max(0, currentCount - 1);
-        console.log(`Decrementing ${pieceKey}: ${currentCount} -> ${newCount}`);
         setState(pieceKey, newCount);
       }
 
@@ -868,6 +870,8 @@ const HiveBoard = (props, context) => {
       setState("lastPlacedPiece", null);
       setState("lastMoveFrom", null);
       setState("lastMoveTo", null);
+      setState("lastMoveOriginalFromStack", null);
+      setState("lastMoveOriginalToStack", null);
 
       // Clear all available spaces on the board
 
@@ -1122,7 +1126,6 @@ const HiveBoard = (props, context) => {
 
                       return boardPieces.map((hex, index) => {
                         const { x, y } = hexToPixel(hex.q, hex.r, hexSize);
-                        //console.log("Rendering hex:", hex.q, hex.r, "isAvailable:", hex.isAvailable);
                         return {
                           div: {
                             style: () => ({

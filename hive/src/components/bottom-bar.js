@@ -45,10 +45,8 @@ const BottomBar = (props, context) => {
 
   const handleConfirm = () => {
     if(!getState('canConfirm', false)) return;
-    const confirmMove = getState('confirmMove', null);
-    if (confirmMove) {
-      confirmMove();
-    }
+    const confirmMove = getState('confirmMove', () => {});
+    confirmMove();
   };
 
   const handleUndo = () => {
@@ -82,49 +80,49 @@ const BottomBar = (props, context) => {
       // Undo piece movement
       const lastMoveFrom = getState('lastMoveFrom', null);
       const lastMoveTo = getState('lastMoveTo', null);
+      const originalFromStack = getState('lastMoveOriginalFromStack', []);
+      const originalToStack = getState('lastMoveOriginalToStack', []);
       
       if (lastMoveFrom && lastMoveTo) {
-        // Get the piece that was moved
         const boardPieces = getState("boardPieces", {});
         const stackedPieces = getState("stackedPieces", {});
         const fromKey = `${lastMoveFrom.q},${lastMoveFrom.r}`;
         const toKey = `${lastMoveTo.q},${lastMoveTo.r}`;
         
-        // Get the piece from its current position
-        const currentStack = stackedPieces[toKey] || [];
-        const movingPiece = currentStack.pop();
+        const newBoardPieces = { ...boardPieces };
+        const newStackedPieces = { ...stackedPieces };
         
-        if (movingPiece) {
-          // Remove from destination
-          const newBoardPieces = { ...boardPieces };
-          const newStackedPieces = { ...stackedPieces };
-          
-          if (currentStack.length === 0) {
-            delete newBoardPieces[toKey];
-            delete newStackedPieces[toKey];
-          } else {
-            newBoardPieces[toKey] = { ...currentStack[currentStack.length - 1], height: currentStack.length };
-            newStackedPieces[toKey] = currentStack;
-          }
-          
-          // Put back at original position
-          newBoardPieces[fromKey] = { ...movingPiece, height: 1 };
-          newStackedPieces[fromKey] = [movingPiece];
-          
-          setState("boardPieces", newBoardPieces);
-          setState("stackedPieces", newStackedPieces);
-          
-          // Update board visual
-          getState("boardData", []).map((hex,index) => {
-            if (hex.q === lastMoveTo.q && hex.r === lastMoveTo.r) {
-              const newTopPiece = currentStack.length > 0 ? currentStack[currentStack.length - 1] : null;
-              setState(`boardData.${index}`, { ...hex, pieceType: newTopPiece ? newTopPiece.type : null, pieceColor: newTopPiece ? newTopPiece.color : "transparent" });
-            }
-            if (hex.q === lastMoveFrom.q && hex.r === lastMoveFrom.r) {
-              setState(`boardData.${index}`, { ...hex, pieceType: movingPiece.type, pieceColor: movingPiece.color });
-            }
-          })
+        // Restore original stacks
+        if (originalFromStack.length > 0) {
+          newBoardPieces[fromKey] = { ...originalFromStack[originalFromStack.length - 1], height: originalFromStack.length };
+          newStackedPieces[fromKey] = [...originalFromStack];
+        } else {
+          delete newBoardPieces[fromKey];
+          delete newStackedPieces[fromKey];
         }
+        
+        if (originalToStack.length > 0) {
+          newBoardPieces[toKey] = { ...originalToStack[originalToStack.length - 1], height: originalToStack.length };
+          newStackedPieces[toKey] = [...originalToStack];
+        } else {
+          delete newBoardPieces[toKey];
+          delete newStackedPieces[toKey];
+        }
+        
+        setState("boardPieces", newBoardPieces);
+        setState("stackedPieces", newStackedPieces);
+        
+        // Update board visual
+        getState("boardData", []).map((hex,index) => {
+          if (hex.q === lastMoveTo.q && hex.r === lastMoveTo.r) {
+            const newTopPiece = originalToStack.length > 0 ? originalToStack[originalToStack.length - 1] : null;
+            setState(`boardData.${index}`, { ...hex, pieceType: newTopPiece ? newTopPiece.type : null, pieceColor: newTopPiece ? newTopPiece.color : "transparent" });
+          }
+          if (hex.q === lastMoveFrom.q && hex.r === lastMoveFrom.r) {
+            const restoredTopPiece = originalFromStack.length > 0 ? originalFromStack[originalFromStack.length - 1] : null;
+            setState(`boardData.${index}`, { ...hex, pieceType: restoredTopPiece ? restoredTopPiece.type : null, pieceColor: restoredTopPiece ? restoredTopPiece.color : "transparent" });
+          }
+        })
       }
     }
 
@@ -142,6 +140,8 @@ const BottomBar = (props, context) => {
     setState("lastPlacedPiece", null);
     setState("lastMoveFrom", null);
     setState("lastMoveTo", null);
+    setState("lastMoveOriginalFromStack", null);
+    setState("lastMoveOriginalToStack", null);
     
     // Clear all available spaces on the board
     getState("boardData", []).map((hex,index) => {

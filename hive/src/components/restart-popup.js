@@ -159,12 +159,6 @@ const RestartPopup = (props, context) => {
                             text: resultMessage
                           }
                         },
-                        {
-                          p: {
-                            className: "text-gray-600",
-                            text: gameWinner ? `${gameWinner.charAt(0).toUpperCase() + gameWinner.slice(1)} queen was surrounded!` : "What would you like to do?"
-                          }
-                        }
                       ]
                     }
                   },
