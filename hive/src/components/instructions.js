@@ -108,7 +108,7 @@ const InstructionsPage = (props, context) => {
                                             className: 'flex-shrink-0',
                                             children: [
                                               {
-                                                HiveHexagon: {
+                                                HiveHexagonDisplay: {
                                                   pieceType: 'queen',
                                                   pieceColor: 'white',
                                                   size: 50
@@ -137,7 +137,7 @@ const InstructionsPage = (props, context) => {
                                             className: 'flex-shrink-0',
                                             children: [
                                               {
-                                                HiveHexagon: {
+                                                HiveHexagonDisplay: {
                                                   pieceType: 'beetle',
                                                   pieceColor: 'white',
                                                   size: 50
@@ -166,7 +166,7 @@ const InstructionsPage = (props, context) => {
                                             className: 'flex-shrink-0',
                                             children: [
                                               {
-                                                HiveHexagon: {
+                                                HiveHexagonDisplay: {
                                                   pieceType: 'grasshopper',
                                                   pieceColor: 'white',
                                                   size: 50
@@ -195,7 +195,7 @@ const InstructionsPage = (props, context) => {
                                             className: 'flex-shrink-0',
                                             children: [
                                               {
-                                                HiveHexagon: {
+                                                HiveHexagonDisplay: {
                                                   pieceType: 'spider',
                                                   pieceColor: 'white',
                                                   size: 50
@@ -224,7 +224,7 @@ const InstructionsPage = (props, context) => {
                                             className: 'flex-shrink-0',
                                             children: [
                                               {
-                                                HiveHexagon: {
+                                                HiveHexagonDisplay: {
                                                   pieceType: 'ant',
                                                   pieceColor: 'white',
                                                   size: 50

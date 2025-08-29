@@ -97,8 +97,8 @@ const HiveHexagon = (props, context) => {
                         "stroke-width": 1,
                         style: {
                           transform: `translate(${
-                            -2 * (i + 1)
-                          }px, ${2 * (i + 1)}px)`,
+                            -2 * (i + 2)
+                          }px, ${2 * (i + 2)}px)`,
                         },
                       },
                     }))
@@ -179,7 +179,7 @@ const HiveHexagon = (props, context) => {
                   div: {
                     className: () => `absolute top-0 right-0 w-5 h-5 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center font-bold z-10 transition-transform duration-200`,
                     style: {
-                      transform: () => `translate(${getState(`stackedPieces.${q},${r}`, {}).length}px, ${-getState(`stackedPieces.${q},${r}`, {}).length}px)`,
+                      transform: () => `translate(${getState(`stackedPieces.${q},${r}`, {}).length-20}px, ${-getState(`stackedPieces.${q},${r}`, {}).length+10}px)`,
                     },
                     text: () => getState(`stackedPieces.${q},${r}`, {}).length.toString(),
                   },

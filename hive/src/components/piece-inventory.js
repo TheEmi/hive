@@ -81,9 +81,16 @@ const PieceInventory = (props, context) => {
         }
       }
     } else {
+      if(getState("movementMode", false)){
+        getState("boardData", []).map((hex,index) => {
+          if (hex.isAvailable) {
+            setState(`boardData.${index}.isAvailable`, false); // Clear available spaces
+          }
+        });
+      }
       setState("selectedPieceInventory", pieceType);
-      getState("calculateValidMoves", () => {})();
       setState("movementMode", false);
+      getState("calculateValidMoves", () => {})();
       
       // Call online handler if in online mode
       const gameMode = getState("gameMode", "local");

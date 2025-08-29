@@ -229,9 +229,24 @@ const HiveBoard = (props, context) => {
   };
 
   const isBeetleMove = (fromQ, fromR, toQ, toR) => {
-    const neighbors = getNeighbors(fromQ, fromR);
-    return neighbors.some((n) => n.q === toQ && n.r === toR);
-  };
+  const neighbors = getNeighbors(fromQ, fromR);
+  // Must move to an adjacent hex
+  if (!neighbors.some((n) => n.q === toQ && n.r === toR)) {
+    return false;
+  }
+
+  // Beetle can move onto a piece (stack)
+  if (isPieceAt(toQ, toR)) {
+    return true;
+  }
+
+  // If moving to an empty hex, it must have at least one neighbor (other than the beetle itself)
+  const targetNeighbors = getNeighbors(toQ, toR);
+  const hasNeighbor = targetNeighbors.some(
+    (neighbor) => !(neighbor.q === fromQ && neighbor.r === fromR) && isPieceAt(neighbor.q, neighbor.r)
+  );
+  return hasNeighbor;
+};
 
   const isGrasshopperMove = (fromQ, fromR, toQ, toR) => {
     const directions = [
@@ -500,10 +515,7 @@ const HiveBoard = (props, context) => {
     // Only update the hexes that should be available
     validHexIndices.forEach((index) => {
       const hex = boardPieces[index];
-      setState(`boardData.${index}`, {
-        ...getState(`boardData.${index}`, {}),
-        isAvailable: true,
-      });
+      setState(`boardData.${index}.isAvailable`, true);
     });
     setState("validMoves", validMoves);
   };
@@ -656,9 +668,12 @@ const HiveBoard = (props, context) => {
       });
       setState("lastMoveTo", { q, r });
       setState("lastMoveType", "movement");
-      
+
       // Store the original stack state for proper undo
-      const originalFromStack = getStackAt(selectedPieceForMovement.q, selectedPieceForMovement.r);
+      const originalFromStack = getStackAt(
+        selectedPieceForMovement.q,
+        selectedPieceForMovement.r
+      );
       const originalToStack = getStackAt(q, r);
       setState("lastMoveOriginalFromStack", [...originalFromStack]);
       setState("lastMoveOriginalToStack", [...originalToStack]);
@@ -673,8 +688,7 @@ const HiveBoard = (props, context) => {
       // Clear available moves after movement
       validMoves.forEach((move) => {
         setState(`boardData.${move.index}.isAvailable`, false);
-      }
-      );
+      });
     } else {
       // Click on invalid move location or different piece - clear movement mode
       setState("movementMode", false);
@@ -755,31 +769,30 @@ const HiveBoard = (props, context) => {
     setState("boardPieces", boardPieces);
     //setState("stackedPieces", stackedPieces);
 
-      getState("boardData", []).map((hex, index) => {
-        if (hex.q === fromQ && hex.r === fromR) {
-          const newTopPiece =
-            fromStack.length > 0 ? fromStack.at(-1) : null;
-          setState(`boardData.${index}`, {
-            ...hex,
-            pieceType: newTopPiece?.type || null,
-            pieceColor: newTopPiece?.color || "transparent",
-          });
-          return;
-        }
-        if (hex.q === toQ && hex.r === toR) {
-          setState(`boardData.${index}`, {
-            ...hex,
-            pieceType: movingPiece?.type || null,
-            pieceColor: movingPiece?.color || "transparent",
-          });
-          return {
-            ...hex,
-            pieceType: movingPiece.type,
-            pieceColor: movingPiece.color,
-          };
-        }
-        return hex;
-      })
+    getState("boardData", []).map((hex, index) => {
+      if (hex.q === fromQ && hex.r === fromR) {
+        const newTopPiece = fromStack.length > 0 ? fromStack.at(-1) : null;
+        setState(`boardData.${index}`, {
+          ...hex,
+          pieceType: newTopPiece?.type || null,
+          pieceColor: newTopPiece?.color || "transparent",
+        });
+        return;
+      }
+      if (hex.q === toQ && hex.r === toR) {
+        setState(`boardData.${index}`, {
+          ...hex,
+          pieceType: movingPiece?.type || null,
+          pieceColor: movingPiece?.color || "transparent",
+        });
+        return {
+          ...hex,
+          pieceType: movingPiece.type,
+          pieceColor: movingPiece.color,
+        };
+      }
+      return hex;
+    });
   };
 
   // Check win function
